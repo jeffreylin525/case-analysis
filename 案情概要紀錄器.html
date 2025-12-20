@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>律師 AI 案情診斷室</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root { --legal-blue: #1a2a6c; --bg: #f5f7fa; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .header { text-align: center; color: var(--legal-blue); margin-bottom: 25px; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        textarea { width: 100%; height: 150px; border: 1px solid #ddd; border-radius: 10px; padding: 10px; font-size: 1rem; box-sizing: border-box; resize: none; }
+        .btn { background: var(--legal-blue); color: white; border: none; width: 100%; padding: 15px; border-radius: 30px; font-size: 1.1rem; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn:disabled { background: #ccc; }
+        
+        /* 診斷報告顯示區 */
+        #result-display { display: none; }
+        .report-content { line-height: 1.6; color: #333; }
+        .report-content h1, .report-content h2 { color: var(--legal-blue); }
+        
+        /* 動畫效果 */
+        .loading { display: none; text-align: center; margin: 20px 0; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--legal-blue); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>⚖️ 案情初步診斷</h1>
+            <p>請輸入事實經過，AI 助理將進行初步法律分析</p>
+        </div>
+
+        <div class="card" id="input-section">
+            <textarea id="case-detail" placeholder="例如：某甲於 112 年 1 月向我借款 50 萬元，約定半年後還清，但至今僅還 5 萬，且訊息不讀不回..."></textarea>
+            <button class="btn" id="analyze-btn" onclick="startAnalysis()">開始智慧分析</button>
+        </div>
+
+        <div class="loading" id="loading-spinner">
+            <div class="spinner"></div>
+            <p>律師 AI 正在研讀案情並檢索法條...</p>
+        </div>
+
+        <div class="card" id="result-display">
+            <h2>📋 診斷報告</h2>
+            <div id="report-body" class="report-content"></div>
+            <button class="btn" style="background:#555;" onclick="location.reload()">重新諮詢</button>
+        </div>
+    </div>
+
+    <script>
+        async function startAnalysis() {
+            const content = document.getElementById('case-detail').value;
+            if (!content) return alert("請輸入案情描述");
+
+            // UI 狀態切換
+            document.getElementById('input-section').style.display = 'none';
+            document.getElementById('loading-spinner').style.display = 'block';
+
+            try {
+                // 串接您的 n8n Webhook
+                const response = await fetch('YOUR_N8N_WEBHOOK_URL', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description: content })
+                });
+
+                const data = await response.json();
+                
+                // 假設 n8n 回傳的欄位叫做 "analysis"
+                const aiResponse = data.analysis || "分析完成，但無法取得內容。";
+
+                // 顯示結果並解析 Markdown
+                document.getElementById('loading-spinner').style.display = 'none';
+                document.getElementById('result-display').style.display = 'block';
+                document.getElementById('report-body').innerHTML = marked.parse(aiResponse);
+
+            } catch (error) {
+                alert("連線失敗，請檢查 n8n 設定");
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>

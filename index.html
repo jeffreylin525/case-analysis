@@ -34,6 +34,18 @@
         }
         textarea:focus { outline: none; border-color: var(--legal-blue); }
         
+        /* 檔案上傳區樣式 */
+        .file-upload-wrapper {
+            margin-top: 15px;
+            border: 2px dashed #ddd;
+            padding: 15px;
+            text-align: center;
+            border-radius: 8px;
+            position: relative;
+        }
+        .file-upload-wrapper:hover { border-color: var(--legal-blue); }
+        input[type="file"] { width: 100%; margin-top: 5px; }
+
         /* 結果編輯區特別樣式 */
         #result-editor { 
             min-height: 350px; border-color: #dcdcdc; background-color: #fafafa; 
@@ -66,8 +78,15 @@
         </div>
 
         <div class="card" id="input-section">
-            <label>當事人陳述 / 案情摘要</label>
+            <label>1. 當事人陳述 / 案情摘要</label>
             <textarea id="case-detail" placeholder="請輸入事實經過，例如：車禍發生時間、地點、損害狀況，或債務糾紛之約定與違約情形..."></textarea>
+            
+            <label style="margin-top: 15px;">2. 上傳佐證資料 (選填)</label>
+            <div class="file-upload-wrapper">
+                <input type="file" id="case-file" accept="image/*,application/pdf,.doc,.docx,.txt">
+                <small style="display:block; color:#999; margin-top:5px;">支援圖片、PDF、Word (建議 < 10MB)</small>
+            </div>
+
             <button class="btn" style="margin-top: 15px;" onclick="startAnalysis()">
                 <span>🔍 開始智慧分析</span>
             </button>
@@ -75,7 +94,7 @@
 
         <div class="loading" id="loading-spinner">
             <div class="spinner"></div>
-            <p style="margin-top: 10px; color: #666;">AI 助理正在研讀案情並檢索法條...</p>
+            <p style="margin-top: 10px; color: #666;">AI 助理正在研讀案情與檔案...</p>
         </div>
 
         <div class="card hidden" id="result-section">
@@ -111,7 +130,7 @@
         // ⚠️ 請在此處填入您的 n8n Webhook 網址
         // ==========================================
         
-        // 1. AI 分析用的 Webhook (接收 description -> 回傳 analysis)
+        // 1. AI 分析用的 Webhook (接收 description + file -> 回傳 analysis)
         const WEBHOOK_ANALYSIS = 'https://l52511.zeabur.app/webhook/case-analysis'; 
         
         // 2. Google Drive 存檔用的 Webhook (接收 filename, content -> 存檔)
@@ -121,34 +140,43 @@
 
         async function startAnalysis() {
             const content = document.getElementById('case-detail').value;
-            if (!content) return alert("請輸入案情描述");
+            const fileInput = document.getElementById('case-file');
+            
+            if (!content && fileInput.files.length === 0) {
+                return alert("請至少輸入案情描述或上傳檔案");
+            }
 
             // 切換畫面
             document.getElementById('input-section').classList.add('hidden');
             document.getElementById('loading-spinner').style.display = 'block';
 
             try {
+                // 改用 FormData 來打包資料 (支援文字+檔案)
+                const formData = new FormData();
+                formData.append('description', content);
+                
+                if (fileInput.files.length > 0) {
+                    // 如果有檔案，把它加進去，欄位名稱叫 'file'
+                    formData.append('file', fileInput.files[0]);
+                }
+
                 const response = await fetch(WEBHOOK_ANALYSIS, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ description: content })
+                    // 注意：當使用 FormData 時，不需要手動設定 'Content-Type'
+                    body: formData
                 });
                 
                 if (!response.ok) throw new Error("API 回應錯誤");
 
                 const data = await response.json();
                 
-                // 取得 AI 回覆 (相容 output 或 analysis 欄位)
                 const aiResponse = data.analysis || data.output || "分析完成，但無法取得內容。";
 
-                // 填入編輯區
                 document.getElementById('result-editor').value = aiResponse;
                 
-                // 自動產生預設檔名
                 const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
                 document.getElementById('doc-filename').value = `案情分析_${dateStr}`;
 
-                // 顯示編輯區
                 document.getElementById('loading-spinner').style.display = 'none';
                 document.getElementById('result-section').classList.remove('hidden');
 
@@ -167,12 +195,12 @@
 
             if (!filename) return alert("請輸入檔案名稱");
 
-            // 按鈕變更狀態
             const originalText = btn.innerHTML;
             btn.innerHTML = "⏳ 雲端存檔中...";
             btn.disabled = true;
 
             try {
+                // 存檔部分維持 JSON 格式，因為只需要存文字
                 const response = await fetch(WEBHOOK_SAVE, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

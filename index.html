@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>律師 AI 案情分析室</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a2a6c">
+    <link rel="apple-touch-icon" href="icon.png">
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <style>
+        :root { --legal-blue: #1a2a6c; --bg: #f5f7fa; --success: #27ae60; --text-gray: #666; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); margin: 0; padding: 20px; box-sizing: border-box; -webkit-user-select: none; user-select: none; padding-bottom: 50px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        
+        .header { text-align: center; color: var(--legal-blue); margin-bottom: 20px; }
+        .header h1 { margin: 0; font-size: 1.5rem; }
+        .header p { margin: 5px 0 0; font-size: 0.9rem; color: var(--text-gray); }
+
+        /* 卡片通用樣式 */
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); margin-bottom: 20px; transition: 0.3s; }
+        
+        /* 輸入區與編輯區 */
+        textarea { 
+            width: 100%; min-height: 120px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; 
+            font-size: 1rem; line-height: 1.6; box-sizing: border-box; resize: vertical; font-family: inherit;
+            -webkit-user-select: text; user-select: text;
+        }
+        textarea:focus { outline: none; border-color: var(--legal-blue); }
+        
+        /* 檔案上傳區樣式 */
+        .file-upload-wrapper {
+            margin-top: 15px;
+            border: 2px dashed #ddd;
+            padding: 15px;
+            text-align: center;
+            border-radius: 8px;
+            position: relative;
+        }
+        .file-upload-wrapper:hover { border-color: var(--legal-blue); }
+        input[type="file"] { width: 100%; margin-top: 5px; }
+
+        /* 結果編輯區特別樣式 */
+        #result-editor { 
+            min-height: 350px; border-color: #dcdcdc; background-color: #fafafa; 
+        }
+
+        /* 按鈕樣式 */
+        .btn { background: var(--legal-blue); color: white; border: none; width: 100%; padding: 15px; border-radius: 30px; font-size: 1rem; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .btn:active { transform: scale(0.98); }
+        .btn-save { background: var(--success); margin-top: 15px; }
+        .btn-reset { background: #95a5a6; margin-top: 10px; }
+        
+        /* 載入動畫 */
+        .loading { display: none; text-align: center; margin: 20px 0; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid var(--legal-blue); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 隱藏區塊控制 */
+        .hidden { display: none; }
+        
+        label { font-weight: bold; color: var(--legal-blue); display: block; margin-bottom: 8px; font-size: 0.95rem; }
+        input[type="text"] { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; margin-bottom: 10px; box-sizing: border-box; font-size: 1rem; -webkit-user-select: text; user-select: text; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>⚖️ 案情分析室</h1>
+            <p>AI 輔助法律診斷與歸檔系統</p>
+        </div>
+
+        <div class="card" id="input-section">
+            <label>1. 當事人陳述 / 案情摘要</label>
+            <textarea id="case-detail" placeholder="請輸入事實經過，例如：車禍發生時間、地點、損害狀況，或債務糾紛之約定與違約情形..."></textarea>
+            
+            <label style="margin-top: 15px;">2. 上傳佐證資料 (選填)</label>
+            <div class="file-upload-wrapper">
+                <input type="file" id="case-file" accept="image/*,application/pdf,.doc,.docx,.txt">
+                <small style="display:block; color:#999; margin-top:5px;">支援圖片、PDF、Word (建議 < 10MB)</small>
+            </div>
+
+            <button class="btn" style="margin-top: 15px;" onclick="startAnalysis()">
+                <span>🔍 開始智慧分析</span>
+            </button>
+        </div>
+
+        <div class="loading" id="loading-spinner">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px; color: #666;">AI 助理正在研讀案情與檔案...</p>
+        </div>
+
+        <div class="card hidden" id="result-section">
+            <label>📋 分析報告 (可點擊修改)</label>
+            <textarea id="result-editor"></textarea>
+            
+            <hr style="border: 0; border-top: 1px dashed #ddd; margin: 20px 0;">
+            
+            <label>歸檔設定 (存至 Google Drive)</label>
+            <input type="text" id="doc-filename" placeholder="請輸入檔案名稱">
+            
+            <button class="btn btn-save" id="btn-save-cloud" onclick="saveToDrive()">
+                <span>☁️ 確認儲存</span>
+            </button>
+            <button class="btn btn-reset" onclick="location.reload()">
+                <span>🔄 清除重來</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('Service Worker 註冊成功'))
+            .catch(err => console.log('Service Worker 註冊失敗:', err));
+        });
+      }
+    </script>
+
+    <script>
+        // ==========================================
+        // ⚠️ 請在此處填入您的 n8n Webhook 網址
+        // ==========================================
+        
+        // 1. AI 分析用的 Webhook (接收 description + file -> 回傳 analysis)
+        const WEBHOOK_ANALYSIS = 'https://l52511.zeabur.app/webhook/case-analysis'; 
+        
+        // 2. Google Drive 存檔用的 Webhook (接收 filename, content -> 存檔)
+        const WEBHOOK_SAVE = 'https://l52511.zeabur.app/webhook/save-to-docs';
+
+        // ==========================================
+
+        async function startAnalysis() {
+            const content = document.getElementById('case-detail').value;
+            const fileInput = document.getElementById('case-file');
+            
+            if (!content && fileInput.files.length === 0) {
+                return alert("請至少輸入案情描述或上傳檔案");
+            }
+
+            // 切換畫面
+            document.getElementById('input-section').classList.add('hidden');
+            document.getElementById('loading-spinner').style.display = 'block';
+
+            try {
+                // 改用 FormData 來打包資料 (支援文字+檔案)
+                const formData = new FormData();
+                formData.append('description', content);
+                
+                if (fileInput.files.length > 0) {
+                    // 如果有檔案，把它加進去，欄位名稱叫 'file'
+                    formData.append('file', fileInput.files[0]);
+                }
+
+                const response = await fetch(WEBHOOK_ANALYSIS, {
+                    method: 'POST',
+                    // 注意：當使用 FormData 時，不需要手動設定 'Content-Type'
+                    body: formData
+                });
+                
+                if (!response.ok) throw new Error("API 回應錯誤");
+
+                const data = await response.json();
+                
+                const aiResponse = data.analysis || data.output || "分析完成，但無法取得內容。";
+
+                document.getElementById('result-editor').value = aiResponse;
+                
+                const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '');
+                document.getElementById('doc-filename').value = `案情分析_${dateStr}`;
+
+                document.getElementById('loading-spinner').style.display = 'none';
+                document.getElementById('result-section').classList.remove('hidden');
+
+            } catch (error) {
+                console.error(error);
+                alert("連線失敗：請檢查 n8n Webhook 是否開啟，或網址是否正確。");
+                document.getElementById('loading-spinner').style.display = 'none';
+                document.getElementById('input-section').classList.remove('hidden');
+            }
+        }
+
+        async function saveToDrive() {
+            const finalContent = document.getElementById('result-editor').value;
+            const filename = document.getElementById('doc-filename').value;
+            const btn = document.getElementById('btn-save-cloud');
+
+            if (!filename) return alert("請輸入檔案名稱");
+
+            const originalText = btn.innerHTML;
+            btn.innerHTML = "⏳ 雲端存檔中...";
+            btn.disabled = true;
+
+            try {
+                // 存檔部分維持 JSON 格式，因為只需要存文字
+                const response = await fetch(WEBHOOK_SAVE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        content: finalContent,
+                        filename: filename
+                    })
+                });
+                
+                if (response.ok) {
+                    alert("✅ 成功！文件已存入您的 Google Drive");
+                } else {
+                    alert("❌ 存檔失敗，請檢查 n8n Google Drive 設定");
+                }
+
+            } catch (error) {
+                console.error(error);
+                alert("連線錯誤");
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
